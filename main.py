@@ -14,31 +14,32 @@ async def webhook(request: Request):
 
     if data.get("method") == "initialize":
         response = {
-            "jsonrpc": "2.0",
-            "id": data.get("id"),
-            "result": {
-                "protocolVersion": "2025-03-26",
-                "capabilities": {
-                    "customTools": [
-                        {
-                            "name": "DemoTool",
-                            "description": "A simple test tool",
-                            "parameters": {
-                                "type": "object",
-                                "properties": {
-                                    "foo": {
-                                        "type": "string",
-                                        "description": "Foo bar string"
-                                    }
-                                },
-                                "required": ["foo"]
-                            }
+            'jsonrpc': '2.0',
+            'id': 0,
+            'result': {
+                'protocolVersion': '2025-03-26',
+                'capabilities': {
+                'customTools': [
+                    {
+                    'name': 'DemoToolUniqueXYZ',
+                    'description': 'A simple test tool',
+                    'parameters': {
+                        'type': 'object',
+                        'properties': {
+                        'foo': {
+                            'type': 'string',
+                            'description': 'Foo bar'
                         }
-                    ],
-                    "supportsRecording": False
+                        },
+                        'required': ['foo']
+                    }
+                    }
+                ],
+                'supportsRecording': False
                 }
             }
-        }
+            }
+
         print("✅ Sending initialize response:", response)
         return JSONResponse(response)
 
