@@ -3,9 +3,21 @@ from fastapi.responses import JSONResponse
 
 app = FastAPI()
 
+@app.head("/")
+async def root_head():
+    return {"status": "alive"}
+
+@app.head("/health")
+async def health_head():
+    return {"status": "healthy"}
+
 @app.get("/")
 async def root():
     return {"status": "alive"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 @app.post("/webhook")
 async def webhook(request: Request):
