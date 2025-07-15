@@ -21,7 +21,7 @@ async def webhook(request: Request):
                 'capabilities': {
                 'customTools': [
                     {
-                    'name': 'DemoToolUniqueXYZ',
+                    'name': 'RingBotSaveToTable',
                     'description': 'A simple test tool',
                     'parameters': {
                         'type': 'object',
@@ -43,7 +43,7 @@ async def webhook(request: Request):
         print("✅ Sending initialize response:", response)
         return JSONResponse(response)
 
-    elif data.get("method") == "tools/DemoTool":
+    elif data.get("method") == "tools/RingBotSaveToTable":
         foo = data.get("params", {}).get("foo")
         print(f"✅ Tool call: foo = {foo}")
         return JSONResponse({
