@@ -25,9 +25,21 @@ def notify_telegram(name: str, phone: str):
     print(f"📲 New lead: {name} ({phone})")
     # Тут можно отправить запрос через requests.post к твоему Telegram-боту
 
+@app.head("/")
+async def root_head():
+    return {"status": "alive"}
+
+@app.head("/health")
+async def health_head():
+    return {"status": "healthy"}
+
 @app.get("/")
 async def root():
     return {"status": "alive"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
 
 # === Webhook ===
 @app.post("/webhook")
