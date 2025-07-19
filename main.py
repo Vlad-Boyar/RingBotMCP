@@ -65,21 +65,35 @@ async def log_to_sheets(request: Request):
 async def lead_to_telegram(request: Request):
     try:
         data = await request.json()
-        name = data.get("name", "Unknown").strip()
+
+        name = data.get("name", "").strip()
+        company = data.get("company", "").strip()
         phone = data.get("phone", "").strip()
         note = data.get("note", "").strip()
 
-        if not phone:
-            return JSONResponse({"status": "missing phone"}, status_code=400)
+        if not name or not company or not phone:
+            return JSONResponse(
+                {"status": "missing fields", "details": {"name": name, "company": company, "phone": phone}},
+                status_code=400
+            )
 
-        msg = f"🚀 *Новый интерес к RingBot!*\nИмя: {name}\nТел: {phone}"
+        msg = (
+            f"🚀 *New RingBot lead!*\n"
+            f"👤 Name: {name}\n"
+            f"🏢 Company: {company}\n"
+            f"📞 Number: {phone}"
+        )
         if note:
-            msg += f"\n📌 {note}"
+            msg += f"\n📝 {note}"
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
-                json={"chat_id": TELEGRAM_CHAT_ID, "text": msg, "parse_mode": "Markdown"}
+                json={
+                    "chat_id": TELEGRAM_CHAT_ID,
+                    "text": msg,
+                    "parse_mode": "Markdown"
+                }
             )
 
             if response.status_code != 200:
@@ -87,6 +101,7 @@ async def lead_to_telegram(request: Request):
                 return JSONResponse({"status": "telegram error"}, status_code=500)
 
         return JSONResponse({"status": "sent"})
+
     except Exception as e:
         print("❌ /lead error:", e)
         return JSONResponse({"status": "internal error"}, status_code=500)
@@ -111,7 +126,7 @@ async def incoming_call(request: Request):
             (now - datetime.strptime(r[0] + " " + r[1], "%Y-%m-%d %H:%M:%S")) < timedelta(hours=1)
         ]
 
-        print(f"📞 {caller} — звонков за час: {len(recent_calls)}")
+        print(f"📞 {caller} — calls per hour: {len(recent_calls)}")
         if len(recent_calls) >= 3:
             print("🚫 BLOCKED")
             return PlainTextResponse(
