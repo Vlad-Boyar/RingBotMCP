@@ -67,7 +67,6 @@ async def log_to_sheets(request: Request):
         print("❌ /log error:", e)
         return JSONResponse({"status": "internal error"}, status_code=500)
 
-# === /lead → отправка лида в Telegram ===
 @app.post("/lead")
 async def lead_to_telegram(request: Request):
     try:
@@ -84,7 +83,7 @@ async def lead_to_telegram(request: Request):
             msg += f"\n📌 {note}"
 
         async with httpx.AsyncClient() as client:
-            await client.post(
+            response = await client.post(
                 f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
                 json={
                     "chat_id": TELEGRAM_CHAT_ID,
@@ -93,8 +92,14 @@ async def lead_to_telegram(request: Request):
                 }
             )
 
+            # 👇 Добавляем лог Telegram-ответа
+            if response.status_code != 200:
+                print("❌ Telegram error:", response.status_code, response.text)
+                return JSONResponse({"status": "telegram error"}, status_code=500)
+
         return JSONResponse({"status": "sent"})
 
     except Exception as e:
         print("❌ /lead error:", e)
         return JSONResponse({"status": "internal error"}, status_code=500)
+        
