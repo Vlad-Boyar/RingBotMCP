@@ -43,21 +43,18 @@ async def health_check():
 async def log_to_sheets(request: Request):
     try:
         data = await request.json()
-        name = data.get("name", "Unknown").strip()
         question = data.get("question", "").strip()
-        answer = data.get("answer", "").strip()
 
-        if not question or not answer:
-            return JSONResponse({"status": "missing data"}, status_code=400)
+        if not question:
+            return JSONResponse({"status": "missing question"}, status_code=400)
 
         now = datetime.now()
+
         if sheet:
             sheet.append_row([
-                name,
-                question,
-                answer,
                 now.strftime("%Y-%m-%d"),
-                now.strftime("%H:%M:%S")
+                now.strftime("%H:%M:%S"),
+                question
             ])
             return JSONResponse({"status": "logged"})
         else:
@@ -102,4 +99,3 @@ async def lead_to_telegram(request: Request):
     except Exception as e:
         print("❌ /lead error:", e)
         return JSONResponse({"status": "internal error"}, status_code=500)
-        
