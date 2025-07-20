@@ -190,19 +190,25 @@ async def post_call(request: Request):
             part.split("=")[0]: part.split("=")[1]
             for part in signature_header.split(",") if "=" in part
         }
+        timestamp    = signature_parts.get("t", "")
         received_sig = signature_parts.get("v0", "")
     except Exception as e:
         print("⚠️ Header parse error:", e)
         return JSONResponse({"status": "bad signature format"}, status_code=400)
 
+    # Составление строки для подписи: t + "." + raw_body
+    raw_body = await request.body()
+    signed_payload = f"{timestamp}.{raw_body.decode()}".encode()
+
     calc_sig = hmac.new(
         HMAC_SECRET.encode(),
-        msg=raw_body,
+        msg=signed_payload,
         digestmod=hashlib.sha256
     ).hexdigest()
 
+    # Debug
     print("📩 Received v0:", received_sig)
-    print("🧮 Calculated :", calc_sig)
+    print("🧮 Calculated  :", calc_sig)
 
     if not hmac.compare_digest(calc_sig, received_sig):
         print("❌ Invalid HMAC signature")
