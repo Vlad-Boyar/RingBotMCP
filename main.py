@@ -181,8 +181,19 @@ async def post_call(request: Request):
     raw_body = await request.body()
     signature_header = request.headers.get("ElevenLabs-Signature", "")
 
-    signature_parts = dict(part.split("=", 1) for part in signature_header.split(",") if "=" in part)
-    received_sig = signature_parts.get("v0", "")
+    print("📦 Raw body:", raw_body.decode(errors="replace"))
+    print("🔐 Using secret:", HMAC_SECRET)
+    print("🔔 Full header:", signature_header)
+
+    try:
+        signature_parts = {
+            part.split("=")[0]: part.split("=")[1]
+            for part in signature_header.split(",") if "=" in part
+        }
+        received_sig = signature_parts.get("v0", "")
+    except Exception as e:
+        print("⚠️ Header parse error:", e)
+        return JSONResponse({"status": "bad signature format"}, status_code=400)
 
     calc_sig = hmac.new(
         HMAC_SECRET.encode(),
@@ -190,8 +201,9 @@ async def post_call(request: Request):
         digestmod=hashlib.sha256
     ).hexdigest()
 
-    print("📩 Received:", received_sig)
-    print("🧮 Calculated:", calc_sig)
+    print("📩 Received v0:", received_sig)
+    print("🧮 Calculated :", calc_sig)
+
     if not hmac.compare_digest(calc_sig, received_sig):
         print("❌ Invalid HMAC signature")
         return JSONResponse({"status": "invalid signature"}, status_code=401)
