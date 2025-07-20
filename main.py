@@ -3,7 +3,6 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
-import base64
 import gspread
 import httpx
 import hashlib
@@ -180,18 +179,22 @@ async def incoming_call(request: Request):
 @app.post("/post-call")
 async def post_call(request: Request):
     raw_body = await request.body()
-    signature = request.headers.get("ElevenLabs-Signature", "")
+    signature_header = request.headers.get("ElevenLabs-Signature", "")
 
-    if HMAC_SECRET:
-        calc_sig = base64.b64encode(
-            hmac.new(HMAC_SECRET.encode(), msg=raw_body, digestmod=hashlib.sha256).digest()
-        ).decode()
+    signature_parts = dict(part.split("=", 1) for part in signature_header.split(",") if "=" in part)
+    received_sig = signature_parts.get("v0", "")
 
-        print("📩 From ElevenLabs:", signature)
-        print("🧮 Calculated    :", calc_sig)
-        if not hmac.compare_digest(calc_sig, signature):
-            print("❌ Invalid HMAC signature")
-            return JSONResponse({"status": "invalid signature"}, status_code=401)
+    calc_sig = hmac.new(
+        HMAC_SECRET.encode(),
+        msg=raw_body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+
+    print("📩 Received:", received_sig)
+    print("🧮 Calculated:", calc_sig)
+    if not hmac.compare_digest(calc_sig, received_sig):
+        print("❌ Invalid HMAC signature")
+        return JSONResponse({"status": "invalid signature"}, status_code=401)
 
     try:
         payload = json.loads(raw_body.decode())
