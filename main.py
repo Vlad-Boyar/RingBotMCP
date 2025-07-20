@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 
 load_dotenv()
 app = FastAPI()
@@ -79,15 +80,18 @@ async def log_to_sheets(request: Request):
         return JSONResponse({"status": "internal error"}, status_code=500)
 
 # === Telegram lead ===
+def escape_markdown(text: str) -> str:
+    return re.sub(r'([_*\[\]()~`>#+=|{}.!\\-])', r'\\\1', text)
+
 @app.post("/lead")
 async def lead_to_telegram(request: Request):
     try:
         data = await request.json()
 
-        name    = data.get("name", "").strip()
-        company = data.get("company", "").strip()
-        phone   = data.get("phone", "").strip()
-        note    = data.get("note", "").strip()
+        name    = escape_markdown(data.get("name", "").strip())
+        company = escape_markdown(data.get("company", "").strip())
+        phone   = escape_markdown(data.get("phone", "").strip())
+        note    = escape_markdown(data.get("note", "").strip())
 
         if not name or not company or not phone:
             return JSONResponse(
@@ -113,7 +117,7 @@ async def lead_to_telegram(request: Request):
                 json={
                     "chat_id": TELEGRAM_CHAT_ID,
                     "text": msg,
-                    "parse_mode": "Markdown",
+                    "parse_mode": "Markdown"
                 },
             )
 
@@ -126,7 +130,6 @@ async def lead_to_telegram(request: Request):
     except Exception as e:
         print("❌ /lead error:", e)
         return JSONResponse({"status": "internal error"}, status_code=500)
-
 
 @app.post("/incoming-call")
 async def incoming_call(request: Request):
