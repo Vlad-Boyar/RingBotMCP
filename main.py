@@ -195,9 +195,14 @@ async def post_call(request: Request):
         print("⚠️ Header parse error:", e)
         return JSONResponse({"status": "bad signature format"}, status_code=400)
 
+    body_json = json.loads(raw_body.decode())
+    data_field = body_json.get("data", {})
+
+    serialized = json.dumps(data_field, separators=(',', ':'), ensure_ascii=False).encode()
+
     calc_sig = hmac.new(
         HMAC_SECRET.encode(),
-        msg=raw_body,
+        msg=serialized,
         digestmod=hashlib.sha256
     ).hexdigest()
 
