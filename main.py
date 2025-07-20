@@ -5,30 +5,46 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import gspread
 import httpx
+import hashlib
+import hmac
+import json
 import os
 
 load_dotenv()
 app = FastAPI()
 
 # === Config ===
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-VOICE_WEBHOOK_URL = os.getenv("VOICE_WEBHOOK_URL")
+TELEGRAM_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID")
+VOICE_WEBHOOK_URL  = os.getenv("VOICE_WEBHOOK_URL")
+HMAC_SECRET        = os.getenv("ELEVENLABS_WEBHOOK_SECRET", "")  # ← добавь в .env
 
 # === Google Sheets Auth ===
-try:
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    creds = Credentials.from_service_account_file("service_account.json", scopes=scope)
-    client = gspread.authorize(creds)
-    q_sheet = client.open("RingBot").worksheet("Questions")
-    calls_sheet = client.open("RingBot").worksheet("Calls")
-except Exception as e:
-    print("❌ Google Sheets init error:", e)
-    q_sheet = None
-    calls_sheet = None
+def open_sheet(name, worksheet):
+    try:
+        scope  = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds  = Credentials.from_service_account_file(
+            "service_account.json", scopes=scope
+        )
+        client = gspread.authorize(creds)
+        sheet  = client.open(name)
+        try:
+            return sheet.worksheet(worksheet)
+        except gspread.WorksheetNotFound:
+            # Создаём лист, если нет
+            rows = 1
+            cols = 10
+            return sheet.add_worksheet(title=worksheet, rows=str(rows), cols=str(cols))
+    except Exception as e:
+        print(f"❌ Google Sheets init error ({worksheet}):", e)
+        return None
+
+q_sheet     = open_sheet("RingBot", "Questions")
+calls_sheet = open_sheet("RingBot", "Calls")
+log_sheet   = open_sheet("RingBot", "CallsLog")   # << новый лист
 
 # === Health check ===
 @app.get("/")
@@ -52,7 +68,9 @@ async def log_to_sheets(request: Request):
 
         now = datetime.now()
         if q_sheet:
-            q_sheet.append_row([now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), question])
+            q_sheet.append_row(
+                [now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), question]
+            )
             return JSONResponse({"status": "logged"})
         else:
             return JSONResponse({"status": "Google Sheet not ready"}, status_code=500)
@@ -66,15 +84,18 @@ async def lead_to_telegram(request: Request):
     try:
         data = await request.json()
 
-        name = data.get("name", "").strip()
+        name    = data.get("name", "").strip()
         company = data.get("company", "").strip()
-        phone = data.get("phone", "").strip()
-        note = data.get("note", "").strip()
+        phone   = data.get("phone", "").strip()
+        note    = data.get("note", "").strip()
 
         if not name or not company or not phone:
             return JSONResponse(
-                {"status": "missing fields", "details": {"name": name, "company": company, "phone": phone}},
-                status_code=400
+                {
+                    "status": "missing fields",
+                    "details": {"name": name, "company": company, "phone": phone},
+                },
+                status_code=400,
             )
 
         msg = (
@@ -92,8 +113,8 @@ async def lead_to_telegram(request: Request):
                 json={
                     "chat_id": TELEGRAM_CHAT_ID,
                     "text": msg,
-                    "parse_mode": "Markdown"
-                }
+                    "parse_mode": "Markdown",
+                },
             )
 
             if response.status_code != 200:
@@ -109,21 +130,30 @@ async def lead_to_telegram(request: Request):
 # === Incoming call anti-spam filter ===
 @app.post("/incoming-call")
 async def incoming_call(request: Request):
-    form = await request.form()
+    form   = await request.form()
     caller = str(form.get("From", "unknown"))
-    now = datetime.utcnow()
+    now    = datetime.utcnow()
 
     try:
         if calls_sheet:
-            calls_sheet.append_row([now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), caller])
+            calls_sheet.append_row(
+                [now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), caller]
+            )
         else:
             print("⚠️ Calls sheet not ready")
 
         rows = calls_sheet.get_all_values()[1:] if calls_sheet else []
         recent_calls = [
-            r for r in rows
-            if len(r) >= 3 and r[2] == caller and
-            (now - datetime.strptime(r[0] + " " + r[1], "%Y-%m-%d %H:%M:%S")) < timedelta(hours=1)
+            r
+            for r in rows
+            if len(r) >= 3
+            and r[2] == caller
+            and (
+                now - datetime.strptime(
+                    r[0] + " " + r[1], "%Y-%m-%d %H:%M:%S"
+                )
+            )
+            < timedelta(hours=1)
         ]
 
         print(f"📞 {caller} — calls per hour: {len(recent_calls)}")
@@ -131,7 +161,7 @@ async def incoming_call(request: Request):
             print("🚫 BLOCKED")
             return PlainTextResponse(
                 content="""<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>""",
-                media_type="application/xml"
+                media_type="application/xml",
             )
 
     except Exception as e:
@@ -143,5 +173,58 @@ async def incoming_call(request: Request):
 <Response>
   <Redirect>{VOICE_WEBHOOK_URL}</Redirect>
 </Response>""",
-        media_type="application/xml"
+        media_type="application/xml",
     )
+
+# === Post‑Call webhook (завершающий) ===
+@app.post("/post-call")
+async def post_call(request: Request):
+    raw_body = await request.body()
+    signature = request.headers.get("ElevenLabs-Signature", "")
+
+    # 1️⃣ Проверяем HMAC‑подпись
+    if HMAC_SECRET:
+        calc_sig = hmac.new(
+            HMAC_SECRET.encode(), msg=raw_body, digestmod=hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(calc_sig, signature):
+            print("❌ Invalid HMAC signature")
+            return JSONResponse({"status": "invalid signature"}, status_code=401)
+
+    # 2️⃣ Парсим JSON
+    try:
+        payload = json.loads(raw_body.decode())
+    except json.JSONDecodeError:
+        print("❌ Bad JSON in webhook")
+        return JSONResponse({"status": "bad json"}, status_code=400)
+
+    # 3️⃣ Достаём нужные поля
+    call_id     = payload.get("call_id", "unknown")
+    duration    = payload.get("duration", 0)
+    transcript  = payload.get("transcript", [])  # ожидаем список реплик
+
+    # Плоский текст для таблички
+    text_lines = [f"{rep['from']}: {rep['text']}" for rep in transcript if isinstance(rep, dict)]
+    flat_text  = "\n".join(text_lines)
+
+    now = datetime.utcnow()
+    try:
+        if log_sheet:
+            log_sheet.append_row(
+                [
+                    now.strftime("%Y-%m-%d"),
+                    now.strftime("%H:%M:%S"),
+                    call_id,
+                    duration,
+                    len(transcript),
+                    flat_text,
+                ],
+                value_input_option="RAW",
+            )
+        else:
+            print("⚠️ CallsLog sheet not ready")
+    except Exception as e:
+        print("❌ Sheet append error:", e)
+        return JSONResponse({"status": "sheet error"}, status_code=500)
+
+    return JSONResponse({"status": "logged"})
