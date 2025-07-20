@@ -127,42 +127,43 @@ async def lead_to_telegram(request: Request):
         print("❌ /lead error:", e)
         return JSONResponse({"status": "internal error"}, status_code=500)
 
+
 @app.post("/incoming-call")
 async def incoming_call(request: Request):
     form = await request.form()
-    caller = str(form.get("From", "unknown"))
+    caller = form.get("From", "unknown")
     now = datetime.utcnow()
 
     try:
+        # логгируем звонок
         if calls_sheet:
-            calls_sheet.append_row(
-                [now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), caller]
+            calls_sheet.append_row([now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), caller])
+
+        rows = calls_sheet.get_all_values()[1:]
+        recent_calls = [
+            r for r in rows
+            if len(r) >= 3 and r[2] == caller and
+            (now - datetime.strptime(r[0] + " " + r[1], "%Y-%m-%d %H:%M:%S")) < timedelta(hours=1)
+        ]
+
+        print(f"📞 {caller} — calls per hour: {len(recent_calls)}")
+        if len(recent_calls) >= 3:
+            print("🚫 BLOCKED")
+            return PlainTextResponse(
+                content="""<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>""",
+                media_type="application/xml"
             )
 
-            rows = calls_sheet.get_all_values()[1:]
-            recent_calls = [
-                r for r in rows
-                if len(r) >= 3 and r[2] == caller and
-                (now - datetime.strptime(r[0] + " " + r[1], "%Y-%m-%d %H:%M:%S")) < timedelta(hours=1)
-            ]
-
-            print(f"📞 {caller} — calls per hour: {len(recent_calls)}")
-            if len(recent_calls) >= 3:
-                print("🚫 BLOCKED")
-                return JSONResponse({"block": True}, status_code=403)
-
-        # Ответ в формате conversation_initiation_client_data
-        return JSONResponse({
-            "user_id": None,
-            "dynamic_variables": {
-                "system__caller_id": caller,
-                "system__timezone": "Europe/London"
-            }
-        })
-
     except Exception as e:
-        print("⚠️ Error:", e)
-        return JSONResponse({"block": True}, status_code=500)
+        print("⚠️ Error logging:", e)
+
+    return PlainTextResponse(
+        content=f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Redirect>https://api.us.elevenlabs.io/twilio/inbound_call</Redirect>
+</Response>""",
+        media_type="application/xml"
+    )
 
 @app.post("/post-call")
 async def post_call(request: Request):
