@@ -175,57 +175,50 @@ async def incoming_call(request: Request):
         media_type="application/xml",
     )
 
-# === Post‑Call webhook ===
 @app.post("/post-call")
 async def post_call(request: Request):
     raw_body = await request.body()
     signature_header = request.headers.get("ElevenLabs-Signature", "")
-
-    print("📦 Raw body:", raw_body.decode(errors="replace"))
-    print("🔐 Using secret:", HMAC_SECRET)
-    print("🔔 Full header:", signature_header)
 
     try:
         signature_parts = {
             part.split("=")[0]: part.split("=")[1]
             for part in signature_header.split(",") if "=" in part
         }
-        timestamp    = signature_parts.get("t", "")
+        timestamp = signature_parts.get("t", "")
         received_sig = signature_parts.get("v0", "")
-    except Exception as e:
-        print("⚠️ Header parse error:", e)
+    except Exception:
         return JSONResponse({"status": "bad signature format"}, status_code=400)
 
-    # Составление строки для подписи: t + "." + raw_body
-    raw_body = await request.body()
     signed_payload = f"{timestamp}.{raw_body.decode()}".encode()
-
     calc_sig = hmac.new(
         HMAC_SECRET.encode(),
         msg=signed_payload,
         digestmod=hashlib.sha256
     ).hexdigest()
 
-    # Debug
-    print("📩 Received v0:", received_sig)
-    print("🧮 Calculated  :", calc_sig)
-
     if not hmac.compare_digest(calc_sig, received_sig):
-        print("❌ Invalid HMAC signature")
         return JSONResponse({"status": "invalid signature"}, status_code=401)
 
     try:
         payload = json.loads(raw_body.decode())
     except json.JSONDecodeError:
-        print("❌ Bad JSON in webhook")
         return JSONResponse({"status": "bad json"}, status_code=400)
 
-    call_id     = payload.get("call_id", "unknown")
-    duration    = payload.get("duration", 0)
-    transcript  = payload.get("transcript", []) 
+    data        = payload.get("data", {})
+    call_id     = data.get("conversation_id", "unknown")
+    metadata    = data.get("metadata", {})
+    duration    = metadata.get("call_duration_secs", 0)
+    transcript  = data.get("transcript", [])
+    caller      = metadata.get("phone_call", {}).get("external_number", "unknown")
+    num_replies = len(transcript)
 
-    text_lines = [f"{rep['from']}: {rep['text']}" for rep in transcript if isinstance(rep, dict)]
-    flat_text  = "\n".join(text_lines)
+    text_lines = [
+        f"{rep['role']}: {rep['message']}"
+        for rep in transcript
+        if isinstance(rep, dict) and rep.get("message")
+    ]
+    flat_text = "\n".join(text_lines)
 
     now = datetime.utcnow()
     try:
@@ -234,9 +227,10 @@ async def post_call(request: Request):
                 [
                     now.strftime("%Y-%m-%d"),
                     now.strftime("%H:%M:%S"),
+                    caller,
                     call_id,
                     duration,
-                    len(transcript),
+                    num_replies,
                     flat_text,
                 ],
                 value_input_option="RAW",
