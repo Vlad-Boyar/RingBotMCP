@@ -208,7 +208,7 @@ async def post_call(request: Request):
     data        = payload.get("data", {})
     call_id     = data.get("conversation_id", "unknown")
     metadata    = data.get("metadata", {})
-    duration    = metadata.get("call_duration_secs", 0)
+    duration    = metadata.get("call_duration_secs", 0) 
     transcript  = data.get("transcript", [])
     caller      = metadata.get("phone_call", {}).get("external_number", "unknown")
     num_replies = len(transcript)
