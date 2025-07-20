@@ -79,18 +79,14 @@ async def log_to_sheets(request: Request):
         print("❌ /log error:", e)
         return JSONResponse({"status": "internal error"}, status_code=500)
 
-# === Telegram lead ===
-def escape_markdown(text: str) -> str:
-    return re.sub(r'([_*\[\]()~`>#+=|{}.!\\-])', r'\\\1', text)
-
 @app.post("/lead")
 async def lead_to_telegram(request: Request):
     try:
         data = await request.json()
 
-        name    = escape_markdown(data.get("name", "").strip())
-        company = escape_markdown(data.get("company", "").strip())
-        phone   = escape_markdown(data.get("phone", "").strip())
+        name    = data.get("name", "").strip()
+        company = data.get("company", "").strip()
+        phone   = data.get("phone", "").strip()
 
         if not name or not company or not phone:
             return JSONResponse(
@@ -102,7 +98,7 @@ async def lead_to_telegram(request: Request):
             )
 
         msg = (
-            f"🚀 *New RingBot lead!*\n"
+            f"🚀 New RingBot lead!\n"
             f"👤 Name: {name}\n"
             f"🏢 Company: {company}\n"
             f"📞 Number: {phone}"
@@ -113,8 +109,7 @@ async def lead_to_telegram(request: Request):
                 f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
                 json={
                     "chat_id": TELEGRAM_CHAT_ID,
-                    "text": msg,
-                    "parse_mode": "Markdown"
+                    "text": msg
                 },
             )
 
