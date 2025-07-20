@@ -91,7 +91,6 @@ async def lead_to_telegram(request: Request):
         name    = escape_markdown(data.get("name", "").strip())
         company = escape_markdown(data.get("company", "").strip())
         phone   = escape_markdown(data.get("phone", "").strip())
-        note    = escape_markdown(data.get("note", "").strip())
 
         if not name or not company or not phone:
             return JSONResponse(
@@ -108,8 +107,6 @@ async def lead_to_telegram(request: Request):
             f"🏢 Company: {company}\n"
             f"📞 Number: {phone}"
         )
-        if note:
-            msg += f"\n📝 {note}"
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
