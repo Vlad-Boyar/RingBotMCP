@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+import base64
 import gspread
 import httpx
 import hashlib
@@ -17,7 +18,7 @@ app = FastAPI()
 TELEGRAM_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID")
 VOICE_WEBHOOK_URL  = os.getenv("VOICE_WEBHOOK_URL")
-HMAC_SECRET        = os.getenv("ELEVENLABS_WEBHOOK_SECRET", "")  # ← добавь в .env
+HMAC_SECRET        = os.getenv("ELEVENLABS_WEBHOOK_SECRET") 
 
 # === Google Sheets Auth ===
 def open_sheet(name, worksheet):
@@ -34,7 +35,7 @@ def open_sheet(name, worksheet):
         try:
             return sheet.worksheet(worksheet)
         except gspread.WorksheetNotFound:
-            # Создаём лист, если нет
+           
             rows = 1
             cols = 10
             return sheet.add_worksheet(title=worksheet, rows=str(rows), cols=str(cols))
@@ -44,7 +45,7 @@ def open_sheet(name, worksheet):
 
 q_sheet     = open_sheet("RingBot", "Questions")
 calls_sheet = open_sheet("RingBot", "Calls")
-log_sheet   = open_sheet("RingBot", "CallsLog")   # << новый лист
+log_sheet   = open_sheet("RingBot", "CallsLog")  
 
 # === Health check ===
 @app.get("/")
@@ -167,7 +168,6 @@ async def incoming_call(request: Request):
     except Exception as e:
         print("⚠️ Error:", e)
 
-    # Пускаем звонок дальше
     return PlainTextResponse(
         content=f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -176,34 +176,33 @@ async def incoming_call(request: Request):
         media_type="application/xml",
     )
 
-# === Post‑Call webhook (завершающий) ===
+# === Post‑Call webhook ===
 @app.post("/post-call")
 async def post_call(request: Request):
     raw_body = await request.body()
     signature = request.headers.get("ElevenLabs-Signature", "")
 
-    # 1️⃣ Проверяем HMAC‑подпись
     if HMAC_SECRET:
-        calc_sig = hmac.new(
-            HMAC_SECRET.encode(), msg=raw_body, digestmod=hashlib.sha256
-        ).hexdigest()
+        calc_sig = base64.b64encode(
+            hmac.new(HMAC_SECRET.encode(), msg=raw_body, digestmod=hashlib.sha256).digest()
+        ).decode()
+
+        print("📩 From ElevenLabs:", signature)
+        print("🧮 Calculated    :", calc_sig)
         if not hmac.compare_digest(calc_sig, signature):
             print("❌ Invalid HMAC signature")
             return JSONResponse({"status": "invalid signature"}, status_code=401)
 
-    # 2️⃣ Парсим JSON
     try:
         payload = json.loads(raw_body.decode())
     except json.JSONDecodeError:
         print("❌ Bad JSON in webhook")
         return JSONResponse({"status": "bad json"}, status_code=400)
 
-    # 3️⃣ Достаём нужные поля
     call_id     = payload.get("call_id", "unknown")
     duration    = payload.get("duration", 0)
-    transcript  = payload.get("transcript", [])  # ожидаем список реплик
+    transcript  = payload.get("transcript", []) 
 
-    # Плоский текст для таблички
     text_lines = [f"{rep['from']}: {rep['text']}" for rep in transcript if isinstance(rep, dict)]
     flat_text  = "\n".join(text_lines)
 
