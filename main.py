@@ -88,9 +88,10 @@ async def lead_to_telegram(
         msg = (
             f"🚀 *New RingBot Lead!*\n"
             f"👤 Name: {name}\n"
-            f"🏢 Company: {company}\n"
-            f"📞 Phone: {phone}"
+            f"🏢 Company: {company}"
         )
+        if phone:
+            msg += f"\n📞 Phone: {phone}"
         if email:
             msg += f"\n📧 Email: {email}"
         if note:
