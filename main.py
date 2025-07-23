@@ -43,7 +43,7 @@ def open_sheet(name, worksheet):
         print(f"❌ Google Sheets init error ({worksheet}):", e)
         return None
 
-q_sheet     = open_sheet("RingBot", "Questions")
+leads_sheet = open_sheet("RingBot", "Leads")
 calls_sheet = open_sheet("RingBot", "Calls")
 log_sheet   = open_sheet("RingBot", "CallsLog")  
 
