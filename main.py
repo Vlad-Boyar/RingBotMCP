@@ -70,7 +70,7 @@ async def lead_to_telegram(
     note: str = Form("")
 ):
     try:
-        if not name or not company or not phone:
+        if not name or not company:
             return JSONResponse(
                 {"status": "missing fields"},
                 status_code=400
