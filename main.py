@@ -118,7 +118,7 @@ async def lead_to_telegram(
             except Exception as e:
                 print("❌ Leads sheet append error:", e)
 
-        return JSONResponse({"status": "sent"})
+        return PlainTextResponse("sent")
 
     except Exception as e:
         print("❌ /lead error:", e)
