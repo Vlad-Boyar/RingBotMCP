@@ -58,64 +58,65 @@ async def root():
 async def health():
     return {"status": "healthy"}
 
-# === Log questions ===
-@app.post("/log")
-async def log_to_sheets(request: Request):
-    try:
-        data = await request.json()
-        question = data.get("question", "").strip()
-        if not question:
-            return JSONResponse({"status": "missing question"}, status_code=400)
-
-        now = datetime.now()
-        if q_sheet:
-            q_sheet.append_row(
-                [now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), question]
-            )
-            return JSONResponse({"status": "logged"})
-        else:
-            return JSONResponse({"status": "Google Sheet not ready"}, status_code=500)
-    except Exception as e:
-        print("❌ /log error:", e)
-        return JSONResponse({"status": "internal error"}, status_code=500)
+from fastapi import Form, Request
+from fastapi.responses import JSONResponse
 
 @app.post("/lead")
-async def lead_to_telegram(request: Request):
+async def lead_to_telegram(
+    name: str = Form(...),
+    company: str = Form(...),
+    phone: str = Form(""),
+    email: str = Form(""),
+    note: str = Form("")
+):
     try:
-        data = await request.json()
-
-        name    = data.get("name", "").strip()
-        company = data.get("company", "").strip()
-        phone   = data.get("phone", "").strip()
-
         if not name or not company or not phone:
             return JSONResponse(
-                {
-                    "status": "missing fields",
-                    "details": {"name": name, "company": company, "phone": phone},
-                },
-                status_code=400,
+                {"status": "missing fields"},
+                status_code=400
             )
 
         msg = (
-            f"🚀 New RingBot lead!\n"
+            f"🚀 *New RingBot Lead!*\n"
             f"👤 Name: {name}\n"
             f"🏢 Company: {company}\n"
-            f"📞 Number: {phone}"
+            f"📞 Phone: {phone}"
         )
+        if email:
+            msg += f"\n📧 Email: {email}"
+        if note:
+            msg += f"\n📝 Note: {note}"
 
+        # === Send to Telegram ===
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
                 json={
                     "chat_id": TELEGRAM_CHAT_ID,
-                    "text": msg
+                    "text": msg,
+                    "parse_mode": "Markdown"
                 },
             )
 
             if response.status_code != 200:
                 print("❌ Telegram error:", response.status_code, response.text)
                 return JSONResponse({"status": "telegram error"}, status_code=500)
+
+        # === Log to Google Sheet ===
+        now = datetime.utcnow()
+        if leads_sheet:
+            try:
+                leads_sheet.append_row([
+                    now.strftime("%Y-%m-%d"),
+                    now.strftime("%H:%M:%S"),
+                    name,
+                    company,
+                    phone,
+                    email,
+                    note
+                ])
+            except Exception as e:
+                print("❌ Leads sheet append error:", e)
 
         return JSONResponse({"status": "sent"})
 
@@ -137,12 +138,12 @@ async def incoming_call(request: Request):
         rows = calls_sheet.get_all_values()[1:]
         recent_calls = [
             r for r in rows
-            if len(r) >= 3 and r[2] == caller and
+            if len(r) >= 5 and r[4] == caller and
             (now - datetime.strptime(r[0] + " " + r[1], "%Y-%m-%d %H:%M:%S")) < timedelta(hours=1)
         ]
 
         print(f"📞 {caller} — calls per hour: {len(recent_calls)}")
-        if len(recent_calls) >= 3:
+        if len(recent_calls) >= 5:
             print("🚫 BLOCKED")
             return PlainTextResponse(
                 content="""<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>""",
