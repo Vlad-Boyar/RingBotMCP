@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -19,6 +20,14 @@ TELEGRAM_TOKEN     = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID")
 VOICE_WEBHOOK_URL  = os.getenv("VOICE_WEBHOOK_URL")
 HMAC_SECRET        = os.getenv("ELEVENLABS_WEBHOOK_SECRET") 
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # === Google Sheets Auth ===
 def open_sheet(name, worksheet):
