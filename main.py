@@ -82,6 +82,7 @@ async def lead_to_telegram(request: Request):
             note    = form.get("note", "").strip()
         except:
             data = await request.json()
+            print("📨 JSON payload:", data)                          # debug
             name    = data.get("name", "").strip()
             company = data.get("company", "").strip()
             phone   = data.get("phone", "").strip()
