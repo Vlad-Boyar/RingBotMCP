@@ -74,24 +74,28 @@ from fastapi.responses import JSONResponse
 async def lead_to_telegram(request: Request):
     try:
         raw_body = await request.body()
-        print("📨 Raw body:", raw_body.decode("utf-8", errors="ignore"))  
+        print("📨 Raw body:", raw_body.decode("utf-8", errors="ignore"))
 
-        try:
-            form = await request.form()
-            name    = form.get("name", "").strip()
-            company = form.get("company", "").strip()
-            phone   = form.get("phone", "").strip()
-            email   = form.get("email", "").strip()
-            note    = form.get("note", "").strip()
-        except:
+        content_type = request.headers.get("content-type", "")
+        print("📨 Content-Type:", content_type)
+
+        if "application/json" in content_type:
             data = await request.json()
             name    = data.get("name", "").strip()
             company = data.get("company", "").strip()
             phone   = data.get("phone", "").strip()
             email   = data.get("email", "").strip()
             note    = data.get("note", "").strip()
+        else:
+            form = await request.form()
+            name    = form.get("name", "").strip()
+            company = form.get("company", "").strip()
+            phone   = form.get("phone", "").strip()
+            email   = form.get("email", "").strip()
+            note    = form.get("note", "").strip()
 
         if not name or not company:
+            print("⚠️ Missing fields:", name, company)
             return JSONResponse({"status": "missing fields"}, status_code=400)
 
         msg = (
@@ -156,12 +160,12 @@ async def incoming_call(request: Request):
         rows = calls_sheet.get_all_values()[1:]
         recent_calls = [
             r for r in rows
-            if len(r) >= 5 and r[4] == caller and
+            if len(r) >= 3 and r[2] == caller and
             (now - datetime.strptime(r[0] + " " + r[1], "%Y-%m-%d %H:%M:%S")) < timedelta(hours=1)
         ]
 
         print(f"📞 {caller} — calls per hour: {len(recent_calls)}")
-        if len(recent_calls) >= 5:
+        if len(recent_calls) > 5:
             print("🚫 BLOCKED")
             return PlainTextResponse(
                 content="""<?xml version="1.0" encoding="UTF-8"?><Response><Reject/></Response>""",
