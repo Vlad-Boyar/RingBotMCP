@@ -73,6 +73,9 @@ from fastapi.responses import JSONResponse
 @app.post("/lead")
 async def lead_to_telegram(request: Request):
     try:
+        raw_body = await request.body()
+        print("📨 Raw body:", raw_body.decode("utf-8", errors="ignore"))  
+
         try:
             form = await request.form()
             name    = form.get("name", "").strip()
@@ -82,7 +85,6 @@ async def lead_to_telegram(request: Request):
             note    = form.get("note", "").strip()
         except:
             data = await request.json()
-            print("📨 JSON payload:", data)                          # debug
             name    = data.get("name", "").strip()
             company = data.get("company", "").strip()
             phone   = data.get("phone", "").strip()
