@@ -71,19 +71,25 @@ from fastapi import Form, Request
 from fastapi.responses import JSONResponse
 
 @app.post("/lead")
-async def lead_to_telegram(
-    name: str = Form(...),
-    company: str = Form(...),
-    phone: str = Form(""),
-    email: str = Form(""),
-    note: str = Form("")
-):
+async def lead_to_telegram(request: Request):
     try:
+        try:
+            form = await request.form()
+            name    = form.get("name", "").strip()
+            company = form.get("company", "").strip()
+            phone   = form.get("phone", "").strip()
+            email   = form.get("email", "").strip()
+            note    = form.get("note", "").strip()
+        except:
+            data = await request.json()
+            name    = data.get("name", "").strip()
+            company = data.get("company", "").strip()
+            phone   = data.get("phone", "").strip()
+            email   = data.get("email", "").strip()
+            note    = data.get("note", "").strip()
+
         if not name or not company:
-            return JSONResponse(
-                {"status": "missing fields"},
-                status_code=400
-            )
+            return JSONResponse({"status": "missing fields"}, status_code=400)
 
         msg = (
             f"🚀 *New RingBot Lead!*\n"
@@ -107,12 +113,11 @@ async def lead_to_telegram(
                     "parse_mode": "Markdown"
                 },
             )
-
             if response.status_code != 200:
                 print("❌ Telegram error:", response.status_code, response.text)
                 return JSONResponse({"status": "telegram error"}, status_code=500)
 
-        # === Log to Google Sheet ===
+        # === Log to Google Sheets ===
         now = datetime.utcnow()
         if leads_sheet:
             try:
@@ -141,7 +146,7 @@ async def incoming_call(request: Request):
     now = datetime.utcnow()
 
     try:
-        # логгируем звонок
+
         if calls_sheet:
             calls_sheet.append_row([now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), caller])
 
